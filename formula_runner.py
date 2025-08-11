@@ -44,7 +44,7 @@ def optimize_sheet(sheet_id: str,
     costs = raw_df["ราคา"].astype(float).to_numpy()
     nutrients = raw_df.iloc[:, 6:].replace("-", 0).astype(float).to_numpy() / 100.0
     nutrient_names = raw_df.columns[6:]
-    nutrient_upper_bound = {"Mg": 10}  # percent max
+    nutrient_upper_bound = {"Mg": 0.8}  # percent max
 
     sku_df = pd.DataFrame(sku_ws.get_all_records())
     sku_df.columns = sku_df.columns.str.strip()
