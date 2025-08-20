@@ -52,6 +52,9 @@ def optimize_sheet(sheet_id: str,
     solver = PULP_CBC_CMD(msg=False)
     results = []
 
+    # === Use 0.1 kg resolution (one decimal place) ===
+    SCALE = 0.1  # each integer unit = 0.1 kg
+
     for _, sku in sku_df.iterrows():
         name = sku["SKU"]
         size = float(sku["Size (KG)"])
@@ -59,19 +62,26 @@ def optimize_sheet(sheet_id: str,
         handling_cost = float(sku.get("ค่าการจัดการ", 0) or 0)
 
         req_pct = sku.iloc[2:2 + len(nutrient_names)].replace("-", 0).astype(float).values
-        req_abs = req_pct * size / 100.0
+        req_abs = req_pct * size / 100.0  # kg of each nutrient required (minimum)
 
         prob = LpProblem(f"Optimize_{name}", LpMinimize)
+
+        # Integer variables in 0.1 kg units
         y_vars = {
             materials[i]: LpVariable(f"y_{materials[i].replace(' ', '_')}", lowBound=0, cat=LpInteger)
             for i in range(len(materials))
         }
 
-        prob += lpSum([0.5 * y_vars[mat] * costs[i] for i, mat in enumerate(materials)])  # minimize cost
-        prob += lpSum([0.5 * y_vars[mat] for mat in materials]) == size                  # exact weight
+        # Minimize material cost (convert integer units back to kg via SCALE)
+        prob += lpSum([SCALE * y_vars[mat] * costs[i] for i, mat in enumerate(materials)])
 
+        # Exact total weight (in kg)
+        prob += lpSum([SCALE * y_vars[mat] for mat in materials]) == size
+
+        # Nutrient constraints
         for j, nutrient_name in enumerate(nutrient_names):
-            contribution = lpSum([0.5 * y_vars[mat] * nutrients[i][j] for i, mat in enumerate(materials)])
+            # contribution in kg of nutrient = sum(weight_i_kg * nutrient_fraction_i_j)
+            contribution = lpSum([SCALE * y_vars[mat] * nutrients[i][j] for i, mat in enumerate(materials)])
             required = req_abs[j]
             if required > 0:
                 prob += contribution >= required
@@ -97,15 +107,18 @@ def optimize_sheet(sheet_id: str,
             })
             continue
 
-        weights = np.array([0.5 * y_vars[mat].varValue for mat in materials])
+        # Retrieve weights in kg (y * SCALE)
+        weights = np.array([SCALE * y_vars[mat].varValue for mat in materials])
         percentages = (weights / size) * 100.0
+        # Actual nutrient percentages in the final mix
         actual_nutrients = nutrients.T @ percentages
+
         material_cost = round(np.dot(percentages / 100.0, costs), 2)
         total_cost = round(material_cost + bag_cost + handling_cost, 2)
 
         row = {"SKU": name, "Size (KG)": size, "Total Cost (THB)": total_cost, "Error": ""}
         for i, mat in enumerate(materials):
-            row[f"{mat} (KG)"] = round(weights[i], 1)
+            row[f"{mat} (KG)"] = round(weights[i], 1)     # one decimal place
             row[f"{mat} (%)"] = round(percentages[i], 2)
         for i, nut in enumerate(nutrient_names):
             row[f"{nut} (Actual)"] = round(actual_nutrients[i], 3)
