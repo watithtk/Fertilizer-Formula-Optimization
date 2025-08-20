@@ -38,7 +38,7 @@ def optimize_sheet(
     input_ws_name: str = "Input",
     sku_ws_name: str = "SKU",
     output_ws_name: str = "Optimized Formula",
-    weight_step: float = 0.5  # default granularity
+    weight_step: float = 0.1  # default granularity
 ) -> dict:
     gc = _gc_from_env()
 
